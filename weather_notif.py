@@ -29,6 +29,10 @@ from typing import Any, Dict
 import requests
 from openai import OpenAI
 from twilio.rest import Client
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 WEATHER_ENDPOINT = "https://api.openweathermap.org/data/2.5/weather"
@@ -45,6 +49,7 @@ class WeatherConfig:
     latitude: str | None
     longitude: str | None
     units: str
+    custom_location: str | None
 
     @classmethod
     def from_env(cls) -> "WeatherConfig":
@@ -62,7 +67,8 @@ class WeatherConfig:
             )
 
         units = os.getenv("WEATHER_UNITS", "metric")
-        return cls(api_key=api_key, city=city, latitude=lat, longitude=lon, units=units)
+        custom_location = os.getenv("WEATHER_CUSTOM_LOCATION")
+        return cls(api_key=api_key, city=city, latitude=lat, longitude=lon, units=units, custom_location=custom_location)
 
 
 @dataclass
@@ -134,9 +140,9 @@ def fetch_weather(config: WeatherConfig) -> Dict[str, Any]:
     return response.json()
 
 
-def build_weather_prompt(data: Dict[str, Any], units: str) -> str:
+def build_weather_prompt(data: Dict[str, Any], units: str, custom_location: str = None) -> str:
     """Create a prompt summarizing the weather data for the language model."""
-    location = data.get("name") or "the configured location"
+    location = custom_location or data.get("name") or "the configured location"
     weather = data.get("weather", [{}])[0]
     main = data.get("main", {})
     wind = data.get("wind", {})
@@ -207,7 +213,7 @@ def main() -> int:
         twilio_cfg = TwilioConfig.from_env()
 
         weather_data = fetch_weather(weather_cfg)
-        prompt = build_weather_prompt(weather_data, weather_cfg.units)
+        prompt = build_weather_prompt(weather_data, weather_cfg.units, weather_cfg.custom_location)
         summary = summarize_weather(openai_cfg, prompt)
         send_sms(twilio_cfg, summary)
         print("Weather summary sent successfully:")
